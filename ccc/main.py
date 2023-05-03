@@ -5,7 +5,15 @@ import os
 import inspect
 import collections
 import glob
-import config as cs
+
+APP_NAME = "ccc"
+# local libraries
+if __name__.startswith(APP_NAME):
+    from .config import Config
+
+else:
+    from config import Config
+
 
 
 class CCStatementReader:
@@ -137,43 +145,12 @@ class CCStatementReader:
             raise Exception(f"{inspect.currentframe().f_code.co_name}();{e}")
 
 
-def cf_setup_logger(name, default_level=logging.INFO):
-    print(f".initialising logging ..")
-    consoleFormatter = logging.Formatter("%(name)s: %(message)s")
-    logging.basicConfig(
-        filename="defaultlog.txt",
-        level=default_level,
-        format="[%(asctime)s]%(name)s;%(levelname)s;%(filename)s;%(funcName)s(): %(message)s",
-    )
-    console = logging.StreamHandler()
-    console.setLevel(default_level)
-    console.setFormatter(consoleFormatter)
-    logging.getLogger("").addHandler(console)
-    logger = logging.getLogger(name)
-    logging.info(f" >>logger loaded.")
-    return logger
-
-
-def sf_replace_keys(cfg, v):
-    try:
-        changekey = cfg["category_to_keys"]
-        if v in changekey.keys():
-            return changekey[v]
-        else:
-            return v
-    except Exception as e:
-        raise e
-
 
 def main():
-    try:
-        log = cf_setup_logger(__name__)
-        cfg = cs.cfg
-        card = CCStatementReader(log, cfg)
-        card.display_data(keys=["3", "4", "1", "2", "0"])
-        # card.display_data(keys=["1"])
-    except Exception as e:
-        log.error(f"{inspect.currentframe().f_code.co_name}();{e}")
+
+    cfg = Config().cfg
+    # card = CCStatementReader(log, cfg)
+    # card.display_data(keys=["3", "4", "1", "2", "0"])
 
 
 if __name__ == "__main__":

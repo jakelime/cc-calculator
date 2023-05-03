@@ -160,11 +160,11 @@ def pretty_print(d, n: int = 0):
                 log.info(f"{spaces}{k=}, {v=}")
 
 
-def main():
-    cfg = Config().cfg
+def test_read_config():
+    cfg = Config(hard_reset=True).cfg
     pretty_print(cfg)
+    # print(cfg['int_keys_to_qualification'])
 
 
 if __name__ == "__main__":
-    main()
-
+    test_read_config()
