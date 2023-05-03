@@ -9,6 +9,19 @@
 
 [general]
 strftime = "%d%b%y:%H%MH"
+drop_na_threshold = 5
+
+
+
+[column_headers]
+"Transaction Date" = "date_transacted"
+"Posting Date" = "date_posted"
+"Description" = "description"
+"Foreign Currency Type" = "currency_foreign"
+"Transaction Amount(Foreign)" = "amount_foreign"
+"Local Currency Type" = "currency"
+"Transaction Amount(Local)" = "amount"
+
 
 [category_to_int_keys]
 
