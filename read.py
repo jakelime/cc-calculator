@@ -1,14 +1,11 @@
-try:
-    import pandas as pd
-    import logging
-    import time
-    import os
-    import inspect
-    import collections
-    import glob
-    import configscr as cs
-except Exception as e:
-    print(f"importError;{e}")
+import pandas as pd
+import logging
+import time
+import os
+import inspect
+import collections
+import glob
+import config as cs
 
 
 class CCStatementReader:
