@@ -7,6 +7,8 @@
     "amount_sgd",
 ]
 
+export_to_csv = false
+
 [general]
 strftime = "%d%b%y:%H%MH"
 drop_na_threshold = 5

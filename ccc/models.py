@@ -12,9 +12,13 @@ APP_NAME = "ccc"
 # local libraries
 if __name__.startswith(APP_NAME):
     from .config import Config
+    from . import utils
+    from .utils import get_time, logOutput
 
 else:
     from config import Config
+    import utils
+    from utils import get_time, logOutput
 
 
 @dataclass
@@ -35,10 +39,20 @@ class UobExcelReader:
     filetable: pd.DataFrame = pd.DataFrame()
     dt_format: str = "%d %b %Y"
 
-    def __init__(self, cfg, input_folder: Path = None, mode: str = "single"):
+    def __init__(
+        self,
+        cfg,
+        input_folder: Path = None,
+        mode: str = "single",
+        export_to_csv: bool = None,
+    ):
         self.log = logging.getLogger(APP_NAME)
         log = self.log
         self.cfg = cfg
+        self.export_to_csv = (
+            cfg["export_to_csv"] if export_to_csv is None else export_to_csv
+        )
+
         if not input_folder:
             self.filetable = self.get_filetable(Path(__file__).parent.parent)
         else:
@@ -88,15 +102,21 @@ class UobExcelReader:
             df["key_code"], downcast="integer", errors="raise"
         )
 
-        df["date_transacted"] = pd.to_datetime(df["date_transacted"],format=self.dt_format)
+        df["date_transacted"] = pd.to_datetime(
+            df["date_transacted"], format=self.dt_format
+        )
 
         qual_dict = {}
-        for k,v in cfg["int_keys_to_qualification"].items():
+        for k, v in cfg["int_keys_to_qualification"].items():
             qual_dict[int(k)] = v
 
-        df["qualified"] = df["key_code"].apply(
-            lambda x: qual_dict[x]
-        )
+        df["qualified"] = df["key_code"].apply(lambda x: qual_dict[x])
+
+        if self.export_to_csv:
+            outpath = Path(cfg["folders"]["outf01"]) / f"{get_time()}.csv"
+            df.to_csv(outpath)
+            logOutput(outpath)
+
         return df.sort_index()
 
     def drop_na_with_threshold(self, dfin):
@@ -104,67 +124,6 @@ class UobExcelReader:
         thresh = self.cfg["general"]["drop_na_threshold"]
         df = df[(df.isnull().sum(axis=1)) < thresh]
         return df
-
-    def display_data(self, keys=["1", "2", "0"]):
-        try:
-            log, cfg = self.log, self.cfg
-            dfin = self.df_raw.copy()
-            cols = list(dfin.columns)
-            cols_selected = [col for col in cols if col in cfg["display_columns"]]
-            ## rearrange columns according to user configuration
-            cols_selected = [
-                col for col in cfg["display_columns"] if col in cols_selected
-            ]
-            critical_params = ["key_code", "tier1_qualified"]
-            for param in critical_params:
-                if param not in cols_selected:
-                    cols_selected.append(param)
-            assert cols_selected, f"the columns selection are invalid!"
-            if len(cols_selected) < len(cfg["display_columns"]):
-                log.warning(f"some of the column keys are invalid!")
-                [log.warning(col) for col in cfg["display_columns"] if col not in cols]
-            dfin = dfin[cols_selected]
-
-            df = dfin[dfin["qualified"] == True]
-            cols = list(df.columns)
-            cols = [col for col in cols if "tier1_qualified" not in col]
-            log.info(
-                f"\n##########################################################################################\
-                \nQualified amount for Tier1 = ${df['amount_sgd'].sum():.2f}"
-            )
-            log.info(f"\n{df[cols]}")
-
-            for k in keys:
-                df = dfin[dfin["key_code"] == k]
-                cols = list(df.columns)
-                cols = [col for col in cols if "tier1_qualified" not in col]
-                totalsum = df["amount_sgd"].sum()
-
-                if k == "3" and totalsum > 7:
-                    log.info(
-                        f"\
-                    \n##########################################################################################\
-                    \n##################################!!!!!!!!!!!!!!!!!!!!####################################\
-                    \n##################################!!!!!!!!APPLE!!!!!!!####################################\
-                    \n##################################!!!!!!!!!!!!!!!!!!!!####################################\
-                    \n##########################################################################################"
-                    )
-
-                else:
-                    pass
-
-                log.info(
-                    f"\n##########################################################################################\
-                    \nkey_code=={k}, total amount = ${totalsum:.2f}"
-                )
-                log.info(f"\n{df[cols]}")
-
-        except Exception as e:
-            raise Exception(f"{inspect.currentframe().f_code.co_name}();{e}")
-
-    def debug_print(self, df):
-        df_ = df[["date_transacted", "item", "amount", "qualified", "key_code"]]
-        self.log.info(f"df_:\n{df_}")
 
 
 def test_uob_excel_reader(cfg):

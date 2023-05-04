@@ -129,6 +129,7 @@ class Config:
 
     def init_user_paths(self, hard_reset=False):
         """Initialize the user working directory"""
+        self.cfg["folders"] = {}
         # Copies all bundled files, except for .py or keys
         if not self.user_bundles.is_dir():
             self.user_bundles.mkdir(parents=True, exist_ok=True)
@@ -137,9 +138,14 @@ class Config:
                 continue
             copyfile(src=fp, dst=self.user_bundles / fp.name, overwrite=hard_reset)
 
+        for folderkey, foldername in self.cfg["general"]["directory"].items():
+            folderpath = self.user_wd / foldername
+            self.cfg["folders"][folderkey] = str(folderpath.resolve())
+            if not folderpath.is_dir():
+                folderpath.mkdir(parents=True, exist_ok=True)
+
     def post_init_keys(self, cfg_input: dict):
         cfg = cfg_input.copy()
-        cfg["folders"] = {}
         cfg["folders"]["user_config_folder"] = str(self.user_bundles.resolve())
         cfg["folders"]["user_working_folder"] = str(self.user_wd.resolve())
         return cfg
