@@ -28,7 +28,7 @@ class FileTableRow:
         self.date_modified = pd.Timestamp(os.path.getmtime(self.filepath), unit="s")
 
 
-class UOB_ExcelReader:
+class UobExcelReader:
     """Reads excel files from UOB credit card transactions"""
 
     input_folder: Path = None
@@ -74,7 +74,6 @@ class UOB_ExcelReader:
         df = df.rename(self.cfg["column_headers"], axis=1)
 
         df["item"] = df["description"].apply(lambda x: x.split("  ")[0])
-        # print(df)
 
         dflist = []
         for k, v in cfg["category_to_int_keys"].items():
@@ -83,7 +82,6 @@ class UOB_ExcelReader:
             dflist.append(df_)
 
         df = pd.concat([df] + dflist)
-        # print(df)
         df.drop_duplicates(subset=["description"], keep="last", inplace=True)
         df["key_code"].fillna(1, inplace=True)
         df["key_code"] = pd.to_numeric(
@@ -92,14 +90,14 @@ class UOB_ExcelReader:
 
         df["date_transacted"] = pd.to_datetime(df["date_transacted"],format=self.dt_format)
 
-        t1_dict = {}
+        qual_dict = {}
         for k,v in cfg["int_keys_to_qualification"].items():
-            t1_dict[int(k)] = v
+            qual_dict[int(k)] = v
 
-        df["qualified_tier1"] = df["key_code"].apply(
-            lambda x: t1_dict[x]
+        df["qualified"] = df["key_code"].apply(
+            lambda x: qual_dict[x]
         )
-        return df
+        return df.sort_index()
 
     def drop_na_with_threshold(self, dfin):
         df = dfin.copy()
@@ -127,7 +125,7 @@ class UOB_ExcelReader:
                 [log.warning(col) for col in cfg["display_columns"] if col not in cols]
             dfin = dfin[cols_selected]
 
-            df = dfin[dfin["tier1_qualified"] == True]
+            df = dfin[dfin["qualified"] == True]
             cols = list(df.columns)
             cols = [col for col in cols if "tier1_qualified" not in col]
             log.info(
@@ -164,13 +162,17 @@ class UOB_ExcelReader:
         except Exception as e:
             raise Exception(f"{inspect.currentframe().f_code.co_name}();{e}")
 
+    def debug_print(self, df):
+        df_ = df[["date_transacted", "item", "amount", "qualified", "key_code"]]
+        self.log.info(f"df_:\n{df_}")
+
 
 def test_uob_excel_reader(cfg):
     pd.set_option("display.max_rows", 20)
     pd.set_option("display.max_columns", 15)
     pd.set_option("display.width", 1000)
 
-    uob = UOB_ExcelReader(cfg)
+    uob = UobExcelReader(cfg)
 
 
 if __name__ == "__main__":

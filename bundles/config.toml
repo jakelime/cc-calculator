@@ -11,6 +11,8 @@
 strftime = "%d%b%y:%H%MH"
 drop_na_threshold = 5
 
+[general.directory]
+outf01 = "output"
 
 
 [column_headers]
@@ -37,13 +39,19 @@ drop_na_threshold = 5
 "ATOME" = 0                      # ATOME is installment
 "APPLE.COM/BILL" = 3
 "CIRCLES.LIFE" = 4
-"UOB ONE CASH REBATE" = 0
-"ONE CARD ADDITIONAL REBATE" = 0
+"UOB ONE CASH REBATE" = 5
+"ONE CARD ADDITIONAL REBATE" = 5
 
 
 [int_keys_to_qualification] ## True are qualified categories
 "0" = false
 "1" = true
 "2" = false
-"3" = true
-"4" = true
+"3" = true  # To track bills from Apple
+"4" = true  # To track bills from Utilities
+"5" = false # To track rebates
+
+
+[viewer]
+exclusions = ["GIRO PAYMENT"]
+number_of_top_big_purchases = 20

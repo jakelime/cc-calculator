@@ -1,145 +1,97 @@
-import pandas as pd
 import logging
-import time
-import os
-import inspect
-import collections
-import glob
+import pandas as pd
+import numpy as np
 
 APP_NAME = "ccc"
 # local libraries
 if __name__.startswith(APP_NAME):
     from .config import Config
-
+    from .models import UobExcelReader
 else:
     from config import Config
+    from models import UobExcelReader
 
 
+class UobExcelViewer:
+    """View UOB credit card transactions"""
 
-class CCStatementViewer:
-    """docstring for CCStatementReader"""
+    columns: list = ["date_transacted", "item", "amount", "key_code"]
+    str_length: int = 84
 
-    def __init__(self, log, cfg):
-        self.log, self.cfg = log, cfg
-        self.filetable = self.get_filetable()
-        ft = self.filetable
-        self.filepath = ft.loc[ft.index[-1], "filename"]
-        if len(self.filetable) != 1:
-            log.warning(
-                f"multiple files detected; processing latest file: {os.path.split(self.filepath)[-1]}"
-            )
-        self.df_raw = self.get_data(self.filepath)
+    def __init__(self, cfg, model):
+        self.log = logging.getLogger(APP_NAME)
+        self.cfg = cfg
+        self.model = model
 
-    def get_filetable(self):
-        try:
-            FILETABLE = collections.namedtuple(
-                "FileTable", "filename filepath datemodified"
-            )
-            filelist = glob.glob(os.path.join(os.getcwd(), "*.xls"))
-            if not filelist:
-                raise Exception(f"no files found.")
-            # fpathlist=sorted(fpathlist, key=lambda t: os.path.getmtime(t))
-            logging.info(f"found: x{len(filelist)} files")
-            filetable_list = []
-            for filepath in filelist:
-                _, filename = os.path.split(filepath)
-                datemodified = os.path.getmtime(filepath)
-                filetable_list.append(FILETABLE(filename, filepath, datemodified))
-            ft = pd.DataFrame(filetable_list)
-            ft = ft.sort_values("datemodified").reset_index(drop=True)
-            return ft
-        except Exception as e:
-            raise Exception(f"{inspect.currentframe().f_code.co_name}();{e}")
+    def make_text_centered(self, str_value) -> str:
+        spaces1 = (self.str_length - (len(str_value) + 4)) // 2
+        spaces2 = self.str_length - (len(str_value) + 4) - spaces1
+        results = f"\n{'*'*spaces1}  {str_value}  {'*'*spaces2}\n"
+        return results
 
-    def get_data(self, filepath):
-        try:
-            cfg = self.cfg
-            df = pd.read_excel(filepath, skiprows=[0, 1, 2, 3, 4, 5, 6, 7, 8], header=0)
-            df["short_description"] = df["Description"].apply(
-                lambda x: x.split("  ")[0]
-            )
+    def display_data(self):
+        self.log.info(self.display_data_qualified())
+        self.log.info(self.display_data_from_category(3))
+        self.log.info(self.display_data_biggest())
+        self.log.info(self.display_data_from_category(2))
+        self.log.info(self.display_data_from_category(5))
 
-            dflist = []
-            for k,v  in cfg["category_to_keys"].items():
-                df_ = df[df["Description"].str.contains(k)].copy()
-                df_["key_code"] = v
-                dflist.append(df_)
+    def display_data_from_category(self, category: int = 1):
+        df = self.model.df.copy()
+        df = df[df["key_code"] == category]
+        total_amount = df["amount"].sum()
+        df = df[self.columns]
+        display_str = ""
+        display_str += self.make_text_centered(f"{category=}")
+        display_str += f"{df}\n"
+        display_str += f"{'-'*self.str_length}\n"
+        display_str += f"Subtotal = ${total_amount:.2f}\n"
+        display_str += f"{'*'*self.str_length}\n"
+        return display_str
 
-            df = pd.concat([df]+dflist)
-            df.drop_duplicates(subset=['Description'],keep='last', inplace=True)
-            df["key_code" ].fillna('1', inplace=True)
-            # print(df)
-            # df = df.reset_index().drop_duplicates(keep='last')
-            # df["key_code" ].fillna('1', inplace=True)
-            # df["key_code"] = df["key_code"].apply(
-            #     lambda x: "1" if x not in cfg["category_to_keys"].values() else x
-            # )
-            df["amount_sgd"] = df["Transaction Amount(Local)"]
-            df["date_transacted"] = pd.to_datetime(df["Transaction Date"])
-            df["posting_status"] = df["Posting Date"].apply(
-                lambda x: "PENDING" if (x == "PENDING") else "ok"
-            )
+    def display_data_qualified(self):
+        cfg = self.cfg["viewer"]
+        df = self.model.df.copy()
+        df = df[~df["item"].isin(cfg["exclusions"])]
+        df = df[df["qualified"]]
+        total_amount = df["amount"].sum()
+        df = df[self.columns]
+        display_str = ""
+        display_str += self.make_text_centered("QUALIFIED")
+        display_str += f"{df}\n"
+        display_str += f"{'-'*self.str_length}\n"
+        display_str += f"Subtotal = ${total_amount:.2f}\n"
+        display_str += f"{'*'*self.str_length}\n"
+        return display_str
 
-            df["tier1_qualified"] = df["key_code"].apply(
-                lambda x: cfg["keys_to_qualification"][x]
-            )
-            return df
-        except Exception as e:
-            raise Exception(f"{inspect.currentframe().f_code.co_name}();{e}")
+    def display_data_biggest(self, title: str = "BIG PURCHASES"):
+        cfg = self.cfg["viewer"]
+        df = self.model.df.copy()
+        df = df.sort_values("amount", ascending=False).head(
+            cfg["number_of_top_big_purchases"]
+        )
+        total_amount = df["amount"].sum()
+        df = df[self.columns]
+        display_str = ""
+        display_str += self.make_text_centered(title)
+        display_str += f"{df}\n"
+        display_str += f"{'-'*self.str_length}\n"
+        display_str += f"Subtotal = ${total_amount:.2f}\n"
+        display_str += f"{'*'*self.str_length}\n"
+        return display_str
 
-    def display_data(self, keys=["1", "2", "0"]):
-        try:
-            log, cfg = self.log, self.cfg
-            dfin = self.df_raw.copy()
-            cols = list(dfin.columns)
-            cols_selected = [col for col in cols if col in cfg["display_columns"]]
-            ## rearrange columns according to user configuration
-            cols_selected = [
-                col for col in cfg["display_columns"] if col in cols_selected
-            ]
-            critical_params = ["key_code", "tier1_qualified"]
-            for param in critical_params:
-                if param not in cols_selected:
-                    cols_selected.append(param)
-            assert cols_selected, f"the columns selection are invalid!"
-            if len(cols_selected) < len(cfg["display_columns"]):
-                log.warning(f"some of the column keys are invalid!")
-                [log.warning(col) for col in cfg["display_columns"] if col not in cols]
-            dfin = dfin[cols_selected]
 
-            df = dfin[dfin["tier1_qualified"] == True]
-            cols = list(df.columns)
-            cols = [col for col in cols if "tier1_qualified" not in col]
-            log.info(
-                f"\n##########################################################################################\
-                \nQualified amount for Tier1 = ${df['amount_sgd'].sum():.2f}"
-            )
-            log.info(f"\n{df[cols]}")
+def test_uob_excel_viewer(cfg):
+    pd.set_option("display.max_rows", 50)
+    pd.set_option("display.max_columns", 15)
+    pd.set_option("display.width", 1000)
 
-            for k in keys:
-                df = dfin[dfin["key_code"] == k]
-                cols = list(df.columns)
-                cols = [col for col in cols if "tier1_qualified" not in col]
-                totalsum = df["amount_sgd"].sum()
+    model = UobExcelReader(cfg)
+    uob = UobExcelViewer(cfg, model)
+    uob.display_data()
 
-                if k == "3" and totalsum > 7:
-                    log.info(
-                        f"\
-                    \n##########################################################################################\
-                    \n##################################!!!!!!!!!!!!!!!!!!!!####################################\
-                    \n##################################!!!!!!!!APPLE!!!!!!!####################################\
-                    \n##################################!!!!!!!!!!!!!!!!!!!!####################################\
-                    \n##########################################################################################"
-                    )
 
-                else:
-                    pass
+if __name__ == "__main__":
 
-                log.info(
-                    f"\n##########################################################################################\
-                    \nkey_code=={k}, total amount = ${totalsum:.2f}"
-                )
-                log.info(f"\n{df[cols]}")
-
-        except Exception as e:
-            raise Exception(f"{inspect.currentframe().f_code.co_name}();{e}")
+    cfg = Config(hard_reset=True).cfg
+    test_uob_excel_viewer(cfg)
