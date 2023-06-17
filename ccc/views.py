@@ -67,7 +67,7 @@ class UobExcelViewer:
     def display_data_biggest(self, title: str = "BIG PURCHASES"):
         cfg = self.cfg["viewer"]
         df = self.model.df.copy()
-        df = df.sort_values("amount", ascending=False).head(
+        df = df[df["amount"]>0].sort_values("amount", ascending=False).head(
             cfg["number_of_top_big_purchases"]
         )
         total_amount = df["amount"].sum()
