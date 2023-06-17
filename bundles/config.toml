@@ -43,7 +43,7 @@ outf01 = "output"
 "CIRCLES.LIFE" = 4
 "UOB ONE CASH REBATE" = 5
 "ONE CARD ADDITIONAL REBATE" = 5
-
+"PAYMT THRU E-BANK" = 0          # Credit card payments
 
 [int_keys_to_qualification] ## True are qualified categories
 "0" = false
