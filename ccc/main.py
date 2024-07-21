@@ -1,24 +1,23 @@
-APP_NAME = "ccc"
-# local libraries
-if __name__.startswith(APP_NAME):
-    from .config import Config
+try:
+    from config import ConfigManager
+    import models
+    import views
+except ImportError as e:
+    raise e
+    from .config import ConfigManager
     from . import models
     from . import views
 
-else:
-    from config import Config
-    import models
-    import views
 
+APP_NAME = "ccc"
+cfg = ConfigManager().config
 
 def main():
 
-    cfg = Config(hard_reset=True).cfg
-    model = models.UobExcelReader(cfg, export_to_csv=True)
+    model = models.UobExcelReader()
     uob = views.UobExcelViewer(cfg, model)
     uob.display_data()
 
 
 if __name__ == "__main__":
-
     main()

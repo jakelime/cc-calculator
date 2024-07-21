@@ -1,15 +1,98 @@
 import logging
-from pathlib import Path
-import shutil
-import time
-import subprocess
-import platform
 import os
-import unicodedata
+import platform
 import re
-
+import shutil
+import subprocess
+import time
+import unicodedata
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 APP_NAME = "ccc"
+
+
+class LoggerManager:
+    def __init__(
+        self,
+        app_name: str = "",
+        logfile_backupCount: int = 5,
+        logfile_maxBytes: int = 2_097_152,
+        default_level=logging.INFO,
+        debug_mode: bool = False,
+    ):
+        if not app_name:
+            app_name = __name__
+        self.default_level = default_level
+        if debug_mode:
+            self.default_level = logging.DEBUG
+        self.logfile_backupCount = logfile_backupCount
+        self.logfile_maxBytes = logfile_maxBytes
+        self.app_name = app_name
+        self.logger_name = app_name
+        self.logger = logging.getLogger(self.app_name)
+        if not self.logger.handlers:
+            # Set ups the logger if it is not already initialised
+            self.init_logger(self.logger)
+
+    def init_logger(self, logger):
+        logger_filepath = self.set_log_filepath()
+        logger.setLevel(self.default_level)
+        formatter = logging.Formatter("%(asctime)s-%(levelname)s: %(message)s")
+        fhandler = RotatingFileHandler(
+            filename=logger_filepath,
+            maxBytes=self.logfile_maxBytes,
+            backupCount=self.logfile_backupCount,
+        )
+        fhandler.setFormatter(formatter)
+        fhandler.setLevel(self.default_level)
+        chandler = logging.StreamHandler()
+        chandler.setLevel(self.default_level)
+        chandler.setFormatter(formatter)
+        logger.addHandler(fhandler)
+        logger.addHandler(chandler)
+        logger.info(f"logger initialised - {logger_filepath}")
+        return logger
+
+    def get_logger(self):
+        return self.logger
+
+    def getLogger(self):
+        return self.logger
+
+    def setLevel(self, level: str = "info"):
+        match level.lower():
+            case "info":
+                for h in self.logger.handlers:
+                    h.setLevel("INFO")
+            case "debug":
+                for h in self.logger.handlers:
+                    h.setLevel("DEBUG")
+            case "warning" | "warn":
+                for h in self.logger.handlers:
+                    h.setLevel("WARNING")
+            case "error":
+                for h in self.logger.handlers:
+                    h.setLevel("ERROR")
+            case _:
+                raise RuntimeError(f"unknown log {level=}")
+        self.logger.critical(f"logger level changed to {level}")
+
+    def change_level(self, level: str = "info"):
+        self.setLevel(level)
+
+    def set_level(self, level: str = "info"):
+        self.setLevel(level)
+
+    def set_log_filepath(self, dirpath: str = "~/Library/Logs") -> Path:
+        logs_dirpath = Path(dirpath).expanduser()
+        if not os.access(logs_dirpath, os.W_OK):
+            raise OSError(f"logs directory is not writeable - {dirpath=}")
+        logger_filepath = logs_dirpath / self.app_name / "main_application.log"
+        if not logger_filepath.parent.is_dir():
+            logger_filepath.parent.mkdir()
+        self.logger_filepath = logger_filepath
+        return logger_filepath
 
 
 class ConfigError(Exception):
@@ -40,7 +123,7 @@ def copyfile(src: Path, dst: Path, overwrite=False):
     Wrapper to copy a file src to dst
     Exceptions will be caught and logged, without breaking the code
     """
-    log = logging.getLogger(APP_NAME)
+    log = LoggerManager(APP_NAME).getLogger()
 
     if dst.is_file() and not overwrite:
         log.debug(f"already exist, skipping ../{dst.name}")
@@ -70,7 +153,7 @@ def get_time(datetimestrformat: str = "%Y%m%d_%H%M%S"):
 
 def classtimer(func):
     def wrapper(ref_self, *args, **kwargs):
-        log = logging.getLogger(APP_NAME)
+        log = LoggerManager(APP_NAME).getLogger()
         t0 = time.perf_counter()
         a = func(ref_self, *args, **kwargs)
         time_taken = time.perf_counter() - t0
@@ -86,7 +169,7 @@ def classtimer(func):
 
 def timer(func):
     def wrapper(*args, **kwargs):
-        log = logging.getLogger(APP_NAME)
+        log = LoggerManager(APP_NAME).getLogger()
         t0 = time.perf_counter()
         a = func(*args, **kwargs)
         log.info(f"[{func.__name__}] elapsed_time = {(time.perf_counter()-t0):.4f}s")
@@ -130,7 +213,7 @@ def get_latest_git_tag(repo_path: Path = None, err_code: str = "versionError"):
 
 
 def open_folder(path):
-    log = logging.getLogger(APP_NAME)
+    log = LoggerManager(APP_NAME).getLogger()
     path = Path(path)
     if path.is_dir():
         if platform.system() == "Windows":
@@ -149,7 +232,7 @@ def write_version_file(
     filename: str = "version.txt",
     version: str = "versionErr",
 ):
-    log = logging.getLogger(APP_NAME)
+    log = LoggerManager(APP_NAME).getLogger()
     version_file = parent_dir / filename
     try:
         with open(version_file, "w") as fm:
@@ -183,7 +266,7 @@ def get_version(version_file: Path):
             version = fm.readline()
         return version
     except IOError:
-        log = logging.getLogger(APP_NAME)
+        log = LoggerManager(APP_NAME).getLogger()
         log.warning(f"{version_file=}")
         log.error(f"IOError: unable to access {version_file=}")
         return "versionErr"
@@ -191,7 +274,7 @@ def get_version(version_file: Path):
 
 def rmtree(path_to_clear: Path):
     try:
-        log = logging.getLogger(APP_NAME)
+        log = LoggerManager(APP_NAME).getLogger()
         if not isinstance(path_to_clear, Path):
             path = Path(path_to_clear)
         else:
@@ -221,7 +304,7 @@ def rmtree(path_to_clear: Path):
 
 
 def factory_reset(app_name: str) -> int:
-    log = logging.getLogger(APP_NAME)
+    log = LoggerManager(APP_NAME).getLogger()
     user_docs = Path(os.path.expanduser("~/Documents/"))
     working_dir = user_docs / f"_tools-{app_name}"
     counter = 0
@@ -271,22 +354,6 @@ def factory_reset(app_name: str) -> int:
     return 0
 
 
-def setup_basic_logger(default_loglevel=logging.INFO):
-    logger = logging.getLogger(__name__)
-    # Create handlers
-    c_handler = logging.StreamHandler()
-    c_handler.setLevel(default_loglevel)
-
-    # Create formatters and add it to handlers
-    c_format = logging.Formatter("%(levelname)-8s: %(message)s")
-    c_handler.setFormatter(c_format)
-
-    # Add handlers to the logger
-    logger.addHandler(c_handler)
-    logger.setLevel(default_loglevel)
-    return logger
-
-
 def get_file(
     folderpath_str: str,
     wildcard_str: str,
@@ -307,7 +374,7 @@ def get_file(
     :rtype: list[Path] or Path
     """
 
-    log = logging.getLogger(APP_NAME)
+    log = LoggerManager(APP_NAME).getLogger()
     folderpath = Path(folderpath_str)
     if not folderpath.is_dir():
         raise NotADirectoryError(f"{folderpath}=")
@@ -352,13 +419,14 @@ def convert_legal_filename(value, allow_unicode=False):
     return value
 
 
-def get_logger_level_bool(level: int=10):
-    logger = logging.getLogger(APP_NAME)
-    return (logger.getEffectiveLevel() <= level)
+def get_logger_level_bool(level: int = 10):
+    logger = LoggerManager(APP_NAME).getLogger()
+    return logger.getEffectiveLevel() <= level
 
 
-def logOutput(outpath, txtstr="saved", level="INFO", prefix: str=""):
-    log = logging.getLogger(APP_NAME)
+def write_output_log_filepath(
+    log, outpath, txtstr="saved", level="INFO", prefix: str = ""
+):
     ostr = f"{prefix}{txtstr} //{outpath.parent.name}/{outpath.name}"
     match level.upper():
         case "INFO":
@@ -373,7 +441,12 @@ def logOutput(outpath, txtstr="saved", level="INFO", prefix: str=""):
             print(ostr)
 
 
+def check_write_permission(directory_path):
+    if not os.access(directory_path, os.W_OK):
+        raise OSError(f"directory is not writeable - {directory_path=}")
+
+
 if __name__ == "__main__":
     # print(get_latest_git_tag(repo_path=Path(__file__).parent.parent))
-    logger = setup_basic_logger()
+    # logger = setup_basic_logger()
     factory_reset(app_name=APP_NAME)

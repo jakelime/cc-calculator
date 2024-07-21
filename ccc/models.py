@@ -1,24 +1,22 @@
+import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
-import logging
-import time
-import os
-
-import pandas as pd
 import numpy as np
+import pandas as pd
+
+try:
+    from .config import ConfigManager
+    from .utils import LoggerManager, get_time, write_output_log_filepath
+except ImportError:
+    from config import ConfigManager
+    from utils import LoggerManager, get_time, write_output_log_filepath
+
 
 APP_NAME = "ccc"
-# local libraries
-if __name__.startswith(APP_NAME):
-    from .config import Config
-    from . import utils
-    from .utils import get_time, logOutput
-
-else:
-    from config import Config
-    import utils
-    from utils import get_time, logOutput
+lg = LoggerManager(APP_NAME).getLogger()
+cfg = ConfigManager().config
 
 
 @dataclass
@@ -32,21 +30,126 @@ class FileTableRow:
         self.date_modified = pd.Timestamp(os.path.getmtime(self.filepath), unit="s")
 
 
+class FileManager:
+    def __init__(self, filepattern: str = "CC_TXN_History_*.xls") -> None:
+        self.filepattern = filepattern
+
+    def get_file(self) -> Path | None:
+        fpath = self.get_file_from_downloads(filepattern=self.filepattern)
+        if fpath is None:
+            fpath = self.get_file_from_codebase(filepattern=self.filepattern)
+        if fpath is None:
+            raise FileNotFoundError(f"no files found; {self.filepattern=}")
+        return fpath
+
+    @staticmethod
+    def get_file_from_downloads(
+        dir_str="~/Downloads", filepattern: str = "CC_TXN_History_*.xls"
+    ) -> Path | None:
+        dirpath = Path(dir_str).expanduser()
+        if not dirpath.is_dir():
+            raise NotADirectoryError(f"invalid {dirpath=}")
+        fpath_iter = dirpath.glob(filepattern)
+        try:
+            fpath = next(fpath_iter)
+            return fpath
+        except StopIteration:
+            return None
+
+    @staticmethod
+    def get_file_from_codebase(
+        filepattern: str = "CC_TXN_History_*.xls",
+    ) -> Path | None:
+        dirpath = Path(__file__).parent.parent
+        fpath_iter = dirpath.glob(filepattern)
+        try:
+            fpath = next(fpath_iter)
+            return fpath
+        except StopIteration:
+            return None
+
+
 class UobExcelReader:
     """Reads excel files from UOB credit card transactions"""
 
-    input_folder: Path = None
+    def __init__(
+        self,
+        dt_format: str = "%d %b %Y",
+        filepattern: str = "CC_TXN_History_*.xls",
+    ):
+        self.export_to_csv = cfg.get("export_to_csv", False)
+        self.dt_format = dt_format
+        self.filepattern = filepattern
+        self.df = self.parse()
+
+    def parse(self, filepattern: str = "", export: bool = False) -> pd.DataFrame:
+        if not filepattern:
+            filepattern = self.filepattern
+        fpath = FileManager(filepattern).get_file()
+        if fpath is None:
+            raise FileNotFoundError(f"no files found; {filepattern=}")
+        df = self.parse_data(fpath)
+        if export:
+            outpath = Path(cfg["folders"]["outf01"]) / f"{get_time()}.csv"
+            df.to_csv(outpath)
+            write_output_log_filepath(lg, outpath)
+        return df
+
+    def parse_data(self, filepath):
+        lg.info(f"reading {filepath.name} ...")
+        df = pd.read_excel(filepath, skiprows=list(np.arange(0, 9)), header=0)
+        df = self.drop_na_with_threshold(df)
+        col_headers = cfg["parser_settings"]["columns_mapper"]
+        if col_headers:
+            df = df.rename(col_headers, axis=1)
+
+        df["item"] = df["description"].apply(lambda x: x.split("  ")[0])
+
+        dflist = []
+        for k, v in cfg["category_mapper"].items():
+            df_ = df[df["item"].str.contains(k)].copy()
+            df_["key_code"] = v
+            dflist.append(df_)
+
+        df = pd.concat([df] + dflist)
+        df.drop_duplicates(subset=["description"], keep="last", inplace=True)
+        df["key_code"] = df["key_code"].fillna(1)
+        df["key_code"] = pd.to_numeric(
+            df["key_code"], downcast="integer", errors="raise"
+        )
+        df["date_transacted"] = pd.to_datetime(
+            df["date_transacted"], format=self.dt_format
+        )
+
+        qual_dict = {}
+        for k, v in cfg["qualifications_table"].items():
+            qual_dict[int(k)] = v
+
+        df["qualified"] = df["key_code"].apply(lambda x: qual_dict[x])
+
+        return df.sort_index()
+
+    def drop_na_with_threshold(self, dfin):
+        df = dfin[
+            (dfin.isnull().sum(axis=1)) < cfg["parser_settings"]["drop_na_threshold"]
+        ]
+        return df
+
+
+class UobExcelReaderOld:
+    """Reads excel files from UOB credit card transactions"""
+
+    input_folder: Optional[Path] = None
     filetable: pd.DataFrame = pd.DataFrame()
     dt_format: str = "%d %b %Y"
 
     def __init__(
         self,
         cfg,
-        input_folder: Path = None,
+        input_folder: Optional[Path] = None,
         mode: str = "single",
-        export_to_csv: bool = None,
+        export_to_csv: bool = False,
     ):
-        self.log = logging.getLogger(APP_NAME)
         log = self.log
         self.cfg = cfg
         self.export_to_csv = (
@@ -69,8 +172,8 @@ class UobExcelReader:
             case _:
                 raise NotImplementedError(f"{mode=}")
 
-    def get_filetable(self, folderpath=Path, glob_wildcard="*.xls"):
-        filelist = folderpath.glob(glob_wildcard)
+    def get_filetable(self, folderpath=Path, glob_wildcard="*.xls") -> pd.DataFrame:
+        filelist = [x for x in folderpath.glob(glob_wildcard)]
         if not filelist:
             raise RuntimeError(f"no files found; {folderpath=} {glob_wildcard=}")
         data = [FileTableRow(fp) for fp in filelist]
@@ -83,7 +186,7 @@ class UobExcelReader:
         cfg = self.cfg
         log.info(f"reading {filepath.name} ...")
 
-        df = pd.read_excel(filepath, skiprows=np.arange(0, 9), header=0)
+        df = pd.read_excel(filepath, skiprows=list(np.arange(0, 9)), header=0)
         df = self.drop_na_with_threshold(df)
         df = df.rename(self.cfg["column_headers"], axis=1)
 
@@ -126,15 +229,15 @@ class UobExcelReader:
         return df
 
 
-def test_uob_excel_reader(cfg):
+def test_uob_excel_reader():
     pd.set_option("display.max_rows", 20)
     pd.set_option("display.max_columns", 15)
     pd.set_option("display.width", 1000)
 
-    uob = UobExcelReader(cfg)
+    uob = UobExcelReader()
+    # uob.parse()
+    lg.info("hello world!")
 
 
 if __name__ == "__main__":
-
-    cfg = Config(hard_reset=True).cfg
-    test_uob_excel_reader(cfg)
+    test_uob_excel_reader()

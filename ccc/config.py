@@ -1,176 +1,157 @@
-# config.py
-# Responsible for initializing configuration needed
-# for the application. There are 2 configurations here:
-# factory configuration and user configuration.
-
-# global libraries
-import os
-import tomlkit
-import logging
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from dotenv import load_dotenv
 
+import tomlkit as tmk
+import utils
+from tomlkit import toml_file
+from tomlkit.toml_document import TOMLDocument
 
 APP_NAME = "ccc"
-# local libraries
-if __name__.startswith(APP_NAME):
-    from .utils import copyfile, ConfigError
-else:
-    from utils import copyfile, ConfigError
 
 
-class Config:
-    """
-    This class is responsible intialising a logger object (to log messages)
-    and initialising a tomlDocument object to be used as user configuration
+class ConfigManager:
+    def __init__(self, dirpath: str = "~/Library/Preferences") -> None:
+        self.app_name = APP_NAME
+        self.dirpath = dirpath
+        self.config_filepath = self.get_config_filepath()
+        if not self.config_filepath.is_file():
+            self.write_toml_file(self.config_filepath)
+        self.config = self.parse_config(self.config_filepath)
 
-    self.log = logging.Logger object
-    self.cfg = tomlDocument object (similar to dict)
-    """
+    def get_config_dirpath(self) -> Path:
+        dirpath = Path(self.dirpath).expanduser()
+        utils.check_write_permission(dirpath)
+        dirpath = Path(self.dirpath).expanduser() / self.app_name
+        if not dirpath.is_dir():
+            dirpath.mkdir()
+        return dirpath
 
-    cfg: dict = None
-    factory_bundles: Path = None
-    factory_filename: str = "config.toml"
-    user_bundles: Path = None
-    user_wd: Path = None
-    log: logging.Logger = None
+    def get_config_filepath(self, filename: str = "config.toml") -> Path:
+        config_filepath = self.get_config_dirpath() / filename
+        return config_filepath
 
-    def __init__(
-        self,
-        hard_reset=False,
-    ) -> None:
-        load_dotenv()
-        self.hard_reset = hard_reset
-        self.factory_bundles = Path(__file__).parent.parent / "bundles"
-        self.factory_filepath = self.factory_bundles / self.factory_filename
+    @staticmethod
+    def write_toml_file(outpath: Path) -> None:
+        toml_doc = ConfigToml(outpath)
+        toml_doc.write_to_file()
 
-        self.user_wd = Path(os.path.expanduser("~/Documents/")) / f"_tools-{APP_NAME}"
-        self.user_bundles = self.user_wd / "bundles"
-        self.user_filepath = self.user_bundles / self.factory_filename
-        self.logfile = self.user_wd / f"{APP_NAME}.log"
-        self.log = self.setup_logger(self.logfile)
+    @staticmethod
+    def parse_config(fpath) -> dict:
+        tf = toml_file.TOMLFile(fpath)
+        doc = tf.read()
+        config = doc.unwrap()
+        return config
 
-        if self.user_filepath.is_file() and not self.hard_reset:
-            self.cfg = self.load_toml(self.user_filepath)
-        else:
-            self.cfg = self.load_toml()
-        self.init_user_paths(self.hard_reset)
-        self.cfg = self.post_init_keys(self.cfg)
-        if self.hard_reset:
-            self.log.warning("hard reset completed.")
-
-    def setup_logger(self, log_filepath: Path = None, default_loglevel="INFO"):
+    def reset(self) -> None:
         """
-        Creates a logger object
-        Logs to both console stdout and also a log file
+        Resets the configuration file by writing a new TOML file and parsing it.
+
+        This function writes a new TOML file to the configured filepath using the `write_toml_file` method.
+        It then parses the newly written TOML file using the `parse_config` method and updates the `config` attribute
+        with the parsed configuration.
+
+        Parameters:
+            None
+
+        Returns:
+            None
         """
-
-        logger = logging.getLogger(APP_NAME)
-        if logger.hasHandlers():
-            return logger
-
-        if log_filepath is None:
-            log_filepath = os.path.expanduser("~/Documents/") / "unnamed.log"
-
-        if not log_filepath.is_file():
-            log_filepath.parent.mkdir(parents=True, exist_ok=True)
-            with log_filepath.open("w", encoding="utf-8") as f:
-                f.write("")
-
-        # Create handlers
-        c_handler = logging.StreamHandler()
-        f_handler = RotatingFileHandler(
-            self.logfile, maxBytes=5_242_880, backupCount=10
-        )
-        c_handler.setLevel(default_loglevel)
-        f_handler.setLevel(default_loglevel)
-
-        # Create formatters and add it to handlers
-        c_format = logging.Formatter("%(levelname)-8s: %(message)s")
-        f_format = logging.Formatter(
-            "[%(asctime)s]%(levelname)-8s: %(message)s", "%y-%j %H:%M:%S"
-        )
-        c_handler.setFormatter(c_format)
-        f_handler.setFormatter(f_format)
-
-        # Add handlers to the logger
-        logger.addHandler(c_handler)
-        logger.addHandler(f_handler)
-        logger.setLevel(default_loglevel)
-        logger.info("logger initialized")
-        return logger
-
-    def load_toml(self, custom_filepath: Path = None) -> object:
-        filepath = self.factory_filepath
-        if custom_filepath is not None:
-            filepath = custom_filepath
-
-        with open(filepath, mode="rt", encoding="utf-8") as fp:
-            self.cfg = tomlkit.load(fp)
-            self.log.debug(
-                f"cfg loaded from //{filepath.parent.parent.name}/{filepath.parent.name}/{filepath.name}"
-            )
-        return self.cfg
-
-    def write_toml(self, target_fp: object) -> None:
-        if self.cfg is None:
-            raise ConfigError("unable to write. empty cfg.")
-        if not isinstance(target_fp, Path):
-            target_fp = Path(target_fp)
-        with open(target_fp, mode="wt", encoding="utf-8") as fp:
-            tomlkit.dump(self.cfg, fp)
-        target_fp = target_fp.resolve()
-        msg = f"configuration file written //{target_fp.parent.name}/{target_fp.name}"
-        if self.log:
-            self.log.info(msg)
-        else:
-            print(msg)
-
-    def init_user_paths(self, hard_reset=False):
-        """Initialize the user working directory"""
-        self.cfg["folders"] = {}
-        # Copies all bundled files, except for .py or keys
-        if not self.user_bundles.is_dir():
-            self.user_bundles.mkdir(parents=True, exist_ok=True)
-        for fp in self.factory_bundles.glob("*.*"):
-            if fp.suffix in [".py", ".key"]:
-                continue
-            copyfile(src=fp, dst=self.user_bundles / fp.name, overwrite=hard_reset)
-
-        for folderkey, foldername in self.cfg["general"]["directory"].items():
-            folderpath = self.user_wd / foldername
-            self.cfg["folders"][folderkey] = str(folderpath.resolve())
-            if not folderpath.is_dir():
-                folderpath.mkdir(parents=True, exist_ok=True)
-
-    def post_init_keys(self, cfg_input: dict):
-        cfg = cfg_input.copy()
-        cfg["folders"]["user_config_folder"] = str(self.user_bundles.resolve())
-        cfg["folders"]["user_working_folder"] = str(self.user_wd.resolve())
-        return cfg
+        self.write_toml_file(self.config_filepath)
+        self.config = self.parse_config(self.config_filepath)
 
 
-def pretty_print(d, n: int = 0):
-    log = logging.getLogger(APP_NAME)
-    spaces = " " * n * 2
-    for k, v in d.items():
-        if isinstance(v, dict):
-            log.info(f"{spaces}{k}:")
-            pretty_print(v, n=n + 1)
-        else:
-            try:
-                log.info(f"{spaces}{k}: {v}")
-            except AttributeError:
-                # Happens when parsing toml (below is to handle tomlkit class)
-                log.info(f"{spaces}{k=}, {v=}")
+class ConfigToml:
+    def __init__(self, config_filepath: Path) -> None:
+        self.config_filepath = config_filepath
+        self.doc = self.init_doc()
+
+    def write_to_file(self) -> Path:
+        tf = toml_file.TOMLFile(self.config_filepath)
+        tf.write(self.doc)
+        print(f"wrote config to {self.config_filepath}")
+        return self.config_filepath
+
+    def init_doc(self) -> TOMLDocument:
+        doc = tmk.document()
+        doc.add(tmk.comment("Configuration file for CreditCardCompiler"))
+        doc.add(tmk.nl())
+
+        doc["display_columns"] = [
+            "date_transacted",
+            "posting_status",
+            "key_code",
+            "tier1_qualified",
+            "short_description",
+            "amount_sgd",
+        ]
+        doc["number_of_top_big_purchases"] = 20
+        doc["export_to_csv"] = False
+        doc["exclusions"] = ["GIRO PAYMENT"]
+
+        parser = tmk.table()
+        doc["parser_settings"] = parser
+        parser["strftime"] = "%d%b%y:%H%MH"
+        parser["drop_na_threshold"] = 5
+        parser["output_dir"] = "~/Documents/ccc-parser/output"
+
+        colm = tmk.table()
+        parser["columns_mapper"] = colm
+        colm["Transaction Date"] = "date_transacted"
+        colm["Posting Date"] = "date_posted"
+        colm["Description"] = "description"
+        colm["Foreign Currency Type"] = "currency_foreign"
+        colm["Transaction Amount(Foreign)"] = "amount_foreign"
+        colm["Local Currency Type"] = "currency"
+        colm["Transaction Amount(Local)"] = "amount"
+
+        # [category_to_int_keys]
+        cat = tmk.table()
+        doc["category_mapper"] = cat
+        cat["BUS/MRT"] = 2
+        cat["SERAYA"] = 0
+        cat["GRAB"] = 0
+        cat["GRAB"].comment("# Grab wallet top up are not qualified")
+        cat["NUHMC-PHARMACY"] = 0
+        cat["NUH"] = 0
+        cat["NUH"].comment("# Medical bills are not qualified")
+        cat["GIRO"] = 0
+        cat["CR"] = 0
+        cat["Previous"] = 0
+        cat["AXS"] = 0
+        cat["AXS"].comment("# AXS transactions are not qualified")
+        cat["ATOME"] = 0
+        cat["ATOME"].comment("# ATOME is installment")
+        cat["APPLE.COM/BILL"] = 3
+        cat["CIRCLES.LIFE"] = 4
+        cat["UOB ONE CASH REBATE"] = 5
+        cat["ONE CARD ADDITIONAL REBATE"] = 5
+        cat["PAYMT THRU E-BANK"] = 0
+        cat["PAYMT THRU E-BANK"].comment("# credit card payment")
+
+        qt = tmk.table()
+        doc["qualifications_table"] = qt
+        qt.add(tmk.comment("In this table, true are qualified transactions"))
+        qt.add(tmk.comment("#0 are unqualified transactions"))
+        qt["0"] = False
+        qt.add(tmk.comment("#1 qualified transactions"))
+        qt["1"] = True
+        qt.add(tmk.comment("#2 are transports"))
+        qt["2"] = False
+        qt.add(tmk.comment("# track bills from Apple"))
+        qt["3"] = True
+        qt.add(tmk.comment("# track bills from Utilities"))
+        qt["4"] = True
+        qt.add(tmk.comment("# track rebates"))
+        qt["5"] = False
+        return doc
 
 
-def test_read_config():
-    cfg = Config(hard_reset=True).cfg
-    pretty_print(cfg)
-    # print(cfg['int_keys_to_qualification'])
+def main():
+    # cfg = ConfigManager().config
+    confm = ConfigManager()
+    confm.reset()
+    cfg = confm.config
+    print(cfg)
 
 
 if __name__ == "__main__":
-    test_read_config()
+    main()
