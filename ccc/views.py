@@ -6,12 +6,12 @@ import pandas as pd
 APP_NAME = "ccc"
 try:
     from config import ConfigManager
-    from models import UobExcelReader
+    from models import FileManager, UobExcelReader
     from utils import LoggerManager
 except ImportError:
-    from .utils import LoggerManager
     from .config import ConfigManager
-    from .models import UobExcelReader
+    from .models import FileManager, UobExcelReader
+    from .utils import LoggerManager
 
 APP_NAME = "ccc"
 lg = LoggerManager(APP_NAME).getLogger()
@@ -54,7 +54,7 @@ class UobExcelViewer:
         return display_str
 
     def display_data_qualified(self):
-        df = self.model.df.copy()
+        df = self.model.df
         df = df[~df["item"].isin(cfg["exclusions"])]
         df = df[df["qualified"]]
         total_amount = df["amount"].sum()
@@ -91,6 +91,9 @@ def test_uob_excel_viewer():
     pd.set_option("display.width", 1000)
 
     model = UobExcelReader()
+    if model.df.empty:
+        fpath = FileManager().get_file_from_output()
+        model.parse(fpath=fpath, cleanup=False)
     uob = UobExcelViewer(model)
     uob.display_data()
 

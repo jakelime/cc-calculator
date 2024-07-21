@@ -86,12 +86,12 @@ class ConfigToml:
         doc["number_of_top_big_purchases"] = 20
         doc["export_to_csv"] = False
         doc["exclusions"] = ["GIRO PAYMENT"]
+        doc["output_dir"] = "~/Documents/ccc-parser/output"
 
         parser = tmk.table()
         doc["parser_settings"] = parser
         parser["strftime"] = "%d%b%y:%H%MH"
         parser["drop_na_threshold"] = 5
-        parser["output_dir"] = "~/Documents/ccc-parser/output"
 
         colm = tmk.table()
         parser["columns_mapper"] = colm

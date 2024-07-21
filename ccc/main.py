@@ -1,21 +1,22 @@
 try:
-    from config import ConfigManager
     import models
     import views
-except ImportError as e:
-    raise e
+    from config import ConfigManager
+except ImportError:
+    from . import models, views
     from .config import ConfigManager
-    from . import models
-    from . import views
 
 
 APP_NAME = "ccc"
 cfg = ConfigManager().config
 
-def main():
 
+def main():
     model = models.UobExcelReader()
-    uob = views.UobExcelViewer(cfg, model)
+    if model.df.empty:
+        fpath = models.FileManager().get_file_from_output()
+        model.parse(fpath=fpath, cleanup=False)
+    uob = views.UobExcelViewer(model)
     uob.display_data()
 
 
