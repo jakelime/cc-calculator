@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import tomlkit as tmk
-import utils
 from tomlkit import toml_file
 from tomlkit.toml_document import TOMLDocument
+
+from . import utils
 
 APP_NAME = "ccc"
 

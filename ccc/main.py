@@ -1,11 +1,5 @@
-try:
-    import models
-    import views
-    from config import ConfigManager
-except ImportError:
-    from . import models, views
-    from .config import ConfigManager
-
+from . import models, views
+from .config import ConfigManager
 
 APP_NAME = "ccc"
 cfg = ConfigManager().config

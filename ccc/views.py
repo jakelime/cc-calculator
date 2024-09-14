@@ -3,15 +3,9 @@ import logging
 import numpy as np
 import pandas as pd
 
-APP_NAME = "ccc"
-try:
-    from config import ConfigManager
-    from models import FileManager, UobExcelReader
-    from utils import LoggerManager
-except ImportError:
-    from .config import ConfigManager
-    from .models import FileManager, UobExcelReader
-    from .utils import LoggerManager
+from .config import ConfigManager
+from .models import FileManager, UobExcelReader
+from .utils import LoggerManager
 
 APP_NAME = "ccc"
 lg = LoggerManager(APP_NAME).getLogger()

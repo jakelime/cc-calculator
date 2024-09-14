@@ -6,14 +6,8 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-
-try:
-    from .config import ConfigManager
-    from .utils import LoggerManager, get_time, write_output_log_filepath
-except ImportError:
-    from config import ConfigManager
-    from utils import LoggerManager, get_time, write_output_log_filepath
-
+from .config import ConfigManager
+from .utils import LoggerManager, get_time, write_output_log_filepath
 
 APP_NAME = "ccc"
 lg = LoggerManager(APP_NAME).getLogger()
