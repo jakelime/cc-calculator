@@ -8,7 +8,8 @@ Currently supporting only `.xls` from UOB Singapore.
 
 1. Clone: `git clone git@github.com:jakelime/cc-calculator.git`
 1. Install python dependencies `pip install -r requirements.txt`
-1. Download `CreditCard Statements`, e.g. CC_TXN_History_07082023064628.xls, into `root` directory
+1. Download `CreditCard Statements` using Chrome/Edge/Safar
+1. i.e. `CC_TXN_History_07082023064628.xls` will be stored in `~/Downloads`
 1. Run `python ccc/main.py`
 
 ## To do
